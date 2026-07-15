@@ -1,0 +1,32 @@
+# float32,float64,int32,int64,uint32,uint64,uint8,char
+variables:
+  DOF_COUNT: [int32,16]
+types:
+  ShmJointCmd:
+    kp: float32
+    goal_joint_pos: float32
+    kd: float32
+    goal_joint_vel: float32
+    torque_feedforward: float32
+  ShmRobotData:
+    #/* 状态 */
+    JointPosition: float32[DOF_COUNT]
+    JointVelocity: float32[DOF_COUNT]
+    JointTorque: float32[DOF_COUNT]
+    ImuRpy: float32[3]
+    ImuAcc: float32[3]
+    ImuOmega: float32[3]
+  ShmRobotDataAll:
+    robot_data: ShmRobotData
+    joint_cmd: ShmJointCmd[DOF_COUNT]
+    actuator_mode: uint8[DOF_COUNT]
+    kp_base: float32[3] # 3个关节的基础kp值
+    kd_base: float32[3] # 3个关节的基础kd值
+    front_leg_kp_scale: float32
+    back_leg_kp_scale: float32
+    front_leg_kd_scale: float32
+    back_leg_kd_scale: float32
+
+sharemem_type: ShmRobotDataAll # Name of the shared memory segment
+shm_lock_cnt: 1 # Number of semaphores to create for this shared memory segment
+#sharemem_name: arm_shm # 共享内存名称，不带/（可选，不指定则由程序根据文件名生成）

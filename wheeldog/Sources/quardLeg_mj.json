@@ -1,0 +1,29 @@
+{
+    "version":"1.0.0",
+    "name": "robo_wheeldog_mj",
+    "server_timeout":[0,800000],
+    "robo_remote_enabled":1,
+    "addPeerWaitTask_port": 5100,
+    "data_pub_bind": ["*:6100"],
+    "ctrl_pub_bind": ["*:6101"],
+    "log_print_level": "DEBUG",
+    "log_save_level": "DEBUG",
+    "user_process_list":
+    [
+        {
+            "name":"rl_deploy",
+            "exe":"",
+            "path":"$PROGRAM_ROOT_PATH/build_local/rl_deploy",
+            "arg":"",
+            "rpc_server_enabled": 1,
+            "log_print_level": "DEBUG",
+            "log_save_level": "DEBUG",
+            "enabled": 1,
+            "autorun": 1
+        }
+    ],
+    "share_mem_list":[
+        "$PROGRAM_ROOT_PATH/Sources/robot_state_shm.yaml"
+    ]
+
+}

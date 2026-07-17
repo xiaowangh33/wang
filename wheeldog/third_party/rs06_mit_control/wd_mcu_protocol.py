@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 MAGIC = 0x34504457
 VERSION = 1
 MOTOR_COUNT = 16
-MAX_PAYLOAD = 1104
+MAX_PAYLOAD = 1172
 
 PACKET_HELLO = 1
 PACKET_SETPOINT = 2
@@ -169,6 +169,11 @@ class McuFeedback:
         default_factory=lambda: (0.0,) * MOTOR_COUNT
     )
     final_torque_telemetry_present: bool = False
+    supply_voltage_valid_mask: int = 0
+    supply_voltage_v: tuple[float, ...] = field(
+        default_factory=lambda: (0.0,) * MOTOR_COUNT
+    )
+    supply_voltage_telemetry_present: bool = False
 
     @property
     def bus_base(self) -> int:
@@ -317,6 +322,15 @@ def parse_feedback(payload: bytes) -> McuFeedback | None:
         final_joint_torque_cmd_nm = MOTOR_FLOATS.unpack_from(payload, offset)
         offset += MOTOR_FLOATS.size
         final_torque_telemetry_present = True
+    supply_voltage_valid_mask = 0
+    supply_voltage_v = (0.0,) * MOTOR_COUNT
+    supply_voltage_telemetry_present = False
+    if len(payload) >= offset + FAST_VALID_MASK.size + MOTOR_FLOATS.size:
+        (supply_voltage_valid_mask,) = FAST_VALID_MASK.unpack_from(payload, offset)
+        offset += FAST_VALID_MASK.size
+        supply_voltage_v = MOTOR_FLOATS.unpack_from(payload, offset)
+        offset += MOTOR_FLOATS.size
+        supply_voltage_telemetry_present = True
     return McuFeedback(
         *values,
         joints,
@@ -334,6 +348,9 @@ def parse_feedback(payload: bytes) -> McuFeedback | None:
         *fast_timing,
         final_joint_torque_cmd_nm,
         final_torque_telemetry_present,
+        supply_voltage_valid_mask,
+        supply_voltage_v,
+        supply_voltage_telemetry_present,
     )
 
 

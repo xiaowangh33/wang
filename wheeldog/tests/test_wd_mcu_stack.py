@@ -85,8 +85,12 @@ def feedback_payload(
     payload += protocol.MOTOR_FLOATS.pack(
         *(float(index) + 0.25 for index in range(protocol.MOTOR_COUNT))
     )
+    payload += protocol.FAST_VALID_MASK.pack(local_mask)
+    payload += protocol.MOTOR_FLOATS.pack(
+        *(48.0 + index * 0.1 for index in range(protocol.MOTOR_COUNT))
+    )
     self_contained = bytes(payload)
-    assert len(self_contained) == protocol.MAX_PAYLOAD == 1104
+    assert len(self_contained) == protocol.MAX_PAYLOAD == 1172
     return self_contained
 
 
@@ -159,21 +163,39 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(parsed.live_stop_fast_age_ms[5], 3)
         self.assertTrue(parsed.final_torque_telemetry_present)
         self.assertAlmostEqual(parsed.final_joint_torque_cmd_nm[7], 7.25)
+        self.assertTrue(parsed.supply_voltage_telemetry_present)
+        self.assertEqual(parsed.supply_voltage_valid_mask, 0xFF00)
+        self.assertAlmostEqual(parsed.supply_voltage_v[12], 49.2, places=4)
 
     def test_feedback_parser_accepts_previous_1040_byte_payload(self) -> None:
         parsed = protocol.parse_feedback(
-            feedback_payload(base2=False)[: -protocol.MOTOR_FLOATS.size]
+            feedback_payload(base2=False)[
+                : -(protocol.FAST_VALID_MASK.size + 2 * protocol.MOTOR_FLOATS.size)
+            ]
         )
         self.assertIsNotNone(parsed)
         assert parsed is not None
         self.assertFalse(parsed.final_torque_telemetry_present)
         self.assertEqual(parsed.final_joint_torque_cmd_nm, (0.0,) * protocol.MOTOR_COUNT)
+        self.assertFalse(parsed.supply_voltage_telemetry_present)
+
+    def test_feedback_parser_accepts_previous_1104_byte_payload(self) -> None:
+        parsed = protocol.parse_feedback(
+            feedback_payload(base2=False)[
+                : -(protocol.FAST_VALID_MASK.size + protocol.MOTOR_FLOATS.size)
+            ]
+        )
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertTrue(parsed.final_torque_telemetry_present)
+        self.assertFalse(parsed.supply_voltage_telemetry_present)
 
     def test_feedback_parser_accepts_pre_extension_payload(self) -> None:
         parsed = protocol.parse_feedback(
             feedback_payload(base2=False)[
                 : -(protocol.LIVE_STOP_DIAGNOSTICS.size + 2 * protocol.MOTOR_BYTES.size)
-                - protocol.MOTOR_FLOATS.size
+                - 2 * protocol.MOTOR_FLOATS.size
+                - protocol.FAST_VALID_MASK.size
             ]
         )
         self.assertIsNotNone(parsed)
@@ -189,6 +211,15 @@ class BridgeTests(unittest.TestCase):
 
     def test_shared_layout(self) -> None:
         self.assertEqual(ctypes.sizeof(bridge.BridgeShm), 1200)
+
+    def test_motor_telemetry_report_combines_both_mcus(self) -> None:
+        first = protocol.parse_feedback(feedback_payload(base2=False))
+        second = protocol.parse_feedback(feedback_payload(base2=True))
+        assert first is not None and second is not None
+        report = bridge.motor_telemetry_report({0: first, 2: second})
+        self.assertIn("temp_C (HipX,HipY,Knee,Wheel) FL[30.0,30.0,30.0,30.0]", report)
+        self.assertIn("bus_V  (HipX,HipY,Knee,Wheel) FL[48.0,48.1,48.2,48.3]", report)
+        self.assertIn("HR[49.2,49.3,49.4,49.5]", report)
 
     def test_consistent_command_snapshot(self) -> None:
         shm = bridge.BridgeShm()

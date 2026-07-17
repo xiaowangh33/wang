@@ -253,7 +253,7 @@ public:
         copy_robo_state_to_shared_memory(rbs_, robot_model::kTotalDof);
 
         const float current_t = run_time_ - time_stamp_record_;
-        if (current_t - last_print_time_ >= 1.0f) {
+        if (current_t - last_print_time_ >= 2.0f) {
             std::cout << "[StandUp] wheeled dog standing... (" << std::fixed << std::setprecision(1)
                       << std::min(current_t, reset_duration_) << "/" << reset_duration_ << "s)"
                       << std::endl;

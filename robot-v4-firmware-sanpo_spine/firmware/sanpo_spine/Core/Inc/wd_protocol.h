@@ -10,7 +10,7 @@ extern "C" {
 
 #define WD_PROTOCOL_MAGIC (0x34504457u) /* "WDP4" little-endian */
 #define WD_PROTOCOL_VERSION (1u)
-#define WD_PROTOCOL_MAX_PAYLOAD (1104u)
+#define WD_PROTOCOL_MAX_PAYLOAD (1172u)
 #define WD_PROTOCOL_MAX_PACKET (WD_PROTOCOL_MAX_PAYLOAD + 16u)
 #define WD_MOTOR_COUNT (16u)
 
@@ -221,6 +221,13 @@ typedef struct {
    * that was active at the trigger instead of reporting cleanup zeroes.
    */
   float final_joint_torque_cmd_nm[WD_MOTOR_COUNT];
+  /*
+   * Low-rate RobStride 0x701C (VBUS) telemetry. Each MCU polls its eight local
+   * motors once per three seconds. The validity mask distinguishes a genuine
+   * 0 V sample from a motor that has not answered yet.
+   */
+  uint32_t supply_voltage_valid_mask;
+  float supply_voltage_v[WD_MOTOR_COUNT];
 } WdFeedbackPayload;
 #pragma pack(pop)
 

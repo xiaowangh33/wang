@@ -28,8 +28,8 @@ USB Full-Speed bulk，不能用 `921600 baud` 直接判断带宽。
 | 链路 | 单元大小与频率 | 总应用层流量 | 判断 |
 |---|---:|---:|---|
 | PC→两 MCU | WDP4 setpoint `368 B * 200 Hz * 2` | `147.2 kB/s` | 余量充足 |
-| 两 MCU→PC | full feedback `1120 B * 最高 200 Hz * 2` | `448.0 kB/s` | USB 主负载 |
-| USB 合计 | 上述双向相加 | `595.2 kB/s = 4.76 Mbit/s` | FS 总线上中等偏高，未饱和 |
+| 两 MCU→PC | full feedback `1188 B * 最高 200 Hz * 2` | `475.2 kB/s` | USB 主负载 |
+| USB 合计 | 上述双向相加 | `622.4 kB/s = 4.98 Mbit/s` | FS 总线上中等偏高，未饱和 |
 | 每条 CAN | 4 电机命令 + 4 电机反馈，均 500 Hz | `4000` 主帧/s | 约 52%～64% 基础占用 |
 | 每条 CAN 慢检查 | 约 100 request/s + 100 reply/s | 约 `200` 帧/s | 合计约 55%～67% |
 
@@ -97,7 +97,7 @@ MCU 的 350 Hz 最低速率是 500 ms 窗口判定；PC 运行期还要求连续
 
 ## 验证与上线要求
 
-- PC 测试：52 项通过，包括单次 USB 写异常、单次 USB 读异常、上一 setpoint 保持、
+- PC 测试：54 项通过，包括单次 USB 写异常、单次 USB 读异常、上一 setpoint 保持、
   历史同序号恢复、陈旧历史拒绝和连续 5 包通信错误才升级。
 - MCU host tests：actuator units、CAN scheduler、fast feedback、safety 和 RobStride
   motion 编码全部通过。
@@ -107,5 +107,5 @@ MCU 的 350 Hz 最低速率是 500 ms 窗口判定；PC 运行期还要求连续
   已在 observation 历史配对修改后重新构建。应先吊装/轮悬空做至少 30 min soak，
   归档 `setpoint_gap_max`、USB timeout/read-error 计数、CAN overflow/TX/deferred、
   每电机 TX/RX Hz、最大 operation gap、observation age/skew。
-- 不建议把 PC/MCU 频率继续上调。若以后确需更高 PC 观测率，应先把 1104 B 全量诊断
+- 不建议把 PC/MCU 频率继续上调。若以后确需更高 PC 观测率，应先把 1172 B 全量诊断
   拆成“高频紧凑状态 + 低频诊断”，而不是直接增加 Full-Speed USB 包频率。

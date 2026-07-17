@@ -9,10 +9,13 @@
 #   WHEELDOG_HW_TICK_HZ=200           # 高层状态机 tick；策略仍按 0.02s elapsed-time 触发（50 Hz）
 #   RL_HIP_KD=2.0                     # 真机RL HipX/HipY阻尼下限；默认与Kd=2训练一致
 #   RL_KNEE_KD=2.0                    # 真机RL Knee阻尼下限；默认与Kd=2训练一致
-#   RL_STABILITY_MONITOR=1            # 5 Hz单行稳定裕度监测；默认开启
+#   RL_STABILITY_MONITOR=0            # 5 Hz稳定裕度诊断；默认关闭
 #   RL_VERBOSE_POLICY_IO=0            # 旧PolicyObs/PolicyWheel长打印；默认关闭
 #   RL_TORQUE_ALIGNMENT_DIAG=0        # 旧PC力矩对齐打印；默认关闭
 #   WHEELDOG_TORQUE_TELEMETRY_REPORT_S=0 # 旧MCU力矩5 Hz打印；0为关闭
+#   WHEELDOG_MOTOR_TELEMETRY_REPORT_S=3 # 每3秒打印16电机温度/母线电压
+#   WHEELDOG_USB_TIMING_REPORT_S=0     # USB时序调试；默认关闭
+#   WHEELDOG_IDLE_DEBUG=0              # Idle全量关节/IMU/摇杆打印；默认关闭
 #   WHEELDOG_MOTOR_PORTS=/dev/ttyACM0,/dev/ttyACM1  # 一个物理 USB 下的两个 CDC 端点
 #   WHEELDOG_MCU_SETPOINT_HZ=200       # PC→双 MCU 五元组复用/保持频率，不改变50 Hz ONNX推理
 #   WHEELDOG_MCU_COMMAND_TIMEOUT_MS=300 # MCU本地命令看门狗；连续失联才归零
@@ -21,7 +24,7 @@
 #   启动自检全程零命令，不做逐电机资格激励；机械方向由吊装后的 z 检查。
 #   RL 电机观测按短历史匹配双 MCU 同 setpoint 序号；样本年龄<=10 ms、到达偏差<=30 ms。
 #   当前 RS06 腿关节力矩上限：36.0 N.m；腿指令限速8 rad/s且保留腿超速保护。
-#   RS01轮目标使用协议最大+/-44 rad/s；轮实测速降额/锁停和600 Nm/s增扭斜率已禁用。
+#   RS01轮部署目标限幅+/-20 rad/s；原生CAN编码范围仍为+/-44 rad/s。
 #   RS01轮驱动峰值力矩上限仍为17.0 N.m.；失联、过温、驱动故障等保护保持不变。
 #   WHEELDOG_MOTOR_VERIFIED_ENABLE=1  # 反馈验证使能，不做运动验证
 #   WHEELDOG_MOTOR_MOTION_VERIFY=0
@@ -48,11 +51,14 @@ export WHEELDOG_IMU_RPY_MAP="${WHEELDOG_IMU_RPY_MAP:-x,-y,z}"
 export WHEELDOG_POLICY_PATH="${WHEELDOG_POLICY_PATH:-${dirname}/policy/ppo/policy.onnx}"
 export RL_HIP_KD="${RL_HIP_KD:-2.0}"
 export RL_KNEE_KD="${RL_KNEE_KD:-2.0}"
-export RL_STABILITY_MONITOR="${RL_STABILITY_MONITOR:-1}"
+export RL_STABILITY_MONITOR="${RL_STABILITY_MONITOR:-0}"
 export RL_VERBOSE_POLICY_IO="${RL_VERBOSE_POLICY_IO:-0}"
 export RL_DEBUG_OUTPUT="${RL_DEBUG_OUTPUT:-0}"
 export RL_TORQUE_ALIGNMENT_DIAG="${RL_TORQUE_ALIGNMENT_DIAG:-0}"
 export WHEELDOG_TORQUE_TELEMETRY_REPORT_S="${WHEELDOG_TORQUE_TELEMETRY_REPORT_S:-0}"
+export WHEELDOG_MOTOR_TELEMETRY_REPORT_S="${WHEELDOG_MOTOR_TELEMETRY_REPORT_S:-3}"
+export WHEELDOG_USB_TIMING_REPORT_S="${WHEELDOG_USB_TIMING_REPORT_S:-0}"
+export WHEELDOG_IDLE_DEBUG="${WHEELDOG_IDLE_DEBUG:-0}"
 
 find_sudo_user_home() {
     local user_home=""

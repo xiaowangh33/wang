@@ -62,6 +62,12 @@ class DeploymentTimingConfigTests(unittest.TestCase):
         )
         control = (firmware_root / "Core" / "Src" / "wd_control.c").read_text()
         self.assertRegex(control, r"WD_CAN_RX_QUEUE_SIZE\s*\(64u\)")
+        self.assertRegex(control, r"WD_ROBSTRIDE_PARAM_VBUS\s*\(0x701Cu\)")
+        self.assertRegex(
+            control, r"WD_MOTOR_TELEMETRY_POLL_PERIOD_MS\s*\(3000u\)"
+        )
+        protocol_header = (firmware_root / "Core" / "Inc" / "wd_protocol.h").read_text()
+        self.assertRegex(protocol_header, r"WD_PROTOCOL_MAX_PAYLOAD\s*\(1172u\)")
         can = (firmware_root / "Core" / "Src" / "can.c").read_text()
         self.assertEqual(can.count("Init.AutoBusOff = ENABLE;"), 2)
 
@@ -80,6 +86,10 @@ class DeploymentTimingConfigTests(unittest.TestCase):
         self.assertRegex(config, r"kHardwareHighLevelTickHz\s*=\s*200\s*;")
         self.assertRegex(config, r"kHardwarePcToMcuSetpointHz\s*=\s*200\s*;")
         self.assertRegex(config, r"kHardwareBringupTorqueLimitNm\s*=\s*36\.0f\s*;")
+        self.assertRegex(
+            config,
+            r"kHardwareWheelMotionVirtualVelocityLimitRadps\s*=\s*20\.0f\s*;",
+        )
         self.assertRegex(config, r"kTrainingLegKd\s*=\s*3\.0f\s*;")
         self.assertRegex(config, r"kStandLegKdScale\s*=\s*1\.5f\s*;")
         self.assertRegex(config, r"kHardwareRlHipKd\s*=\s*kTrainingLegKd\s*;")
@@ -111,7 +121,19 @@ class DeploymentTimingConfigTests(unittest.TestCase):
         self.assertRegex(
             run_script,
             re.compile(
-                r'export RL_STABILITY_MONITOR="\$\{RL_STABILITY_MONITOR:-1\}"'
+                r'export RL_STABILITY_MONITOR="\$\{RL_STABILITY_MONITOR:-0\}"'
+            ),
+        )
+        self.assertRegex(
+            run_script,
+            re.compile(
+                r'export WHEELDOG_MOTOR_TELEMETRY_REPORT_S="\$\{WHEELDOG_MOTOR_TELEMETRY_REPORT_S:-3\}"'
+            ),
+        )
+        self.assertRegex(
+            run_script,
+            re.compile(
+                r'export WHEELDOG_USB_TIMING_REPORT_S="\$\{WHEELDOG_USB_TIMING_REPORT_S:-0\}"'
             ),
         )
 
@@ -126,6 +148,7 @@ class DeploymentTimingConfigTests(unittest.TestCase):
 
         dryrun = (ROOT / "tools" / "wd_mcu_dryrun.py").read_text()
         self.assertRegex(dryrun, r"BENCH_TORQUE_LIMIT_NM\s*=\s*36\.0")
+        self.assertRegex(dryrun, r"BENCH_VELOCITY_LIMIT_RAD_S\s*=\s*20\.0")
         self.assertRegex(dryrun, r"DEFAULT_SETPOINT_HZ\s*=\s*200\.0")
 
 

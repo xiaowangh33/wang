@@ -130,11 +130,12 @@ private:
         return joint_index % robot_model::kDofPerWheelLeg == 2;
     }
 
-    // A single 5 Hz line contains the signals needed to judge damping margin.
-    // The older multi-line policy and torque dumps remain opt-in.
+    // Stability diagnostics and the older multi-line dumps are opt-in so the
+    // normal walking terminal contains only operational telemetry/warnings.
     bool stability_monitor_enabled_ = []() {
         const char* value = std::getenv("RL_STABILITY_MONITOR");
-        return value == nullptr || !(value[0] == '0' && value[1] == '\0');
+        return value && (value[0] == '1' || value[0] == 't' || value[0] == 'T' ||
+                         value[0] == 'y' || value[0] == 'Y');
     }();
     bool torque_alignment_diag_enabled_ = []() {
         const char* value = std::getenv("RL_TORQUE_ALIGNMENT_DIAG");
@@ -173,6 +174,9 @@ private:
     void PrintStabilityDiagnostics(const MatXf& command,
                                    const RobotBasicState& state,
                                    int slew_limited_count) {
+        if (!stability_monitor_enabled_) {
+            return;
+        }
         static constexpr std::array<int, 4> kHipX = {0, 4, 8, 12};
         static constexpr std::array<int, 4> kHipY = {1, 5, 9, 13};
         constexpr float kMotionOnsetRadps = 0.5f;
@@ -273,8 +277,7 @@ private:
         const HipSample worst_x = inspect_group(kHipX);
         const HipSample worst_y = inspect_group(kHipY);
         ++hip_diag_counter_;
-        if (!stability_monitor_enabled_ ||
-            (hip_diag_counter_ % kStabilityMonitorIntervalSteps) != 0) {
+        if ((hip_diag_counter_ % kStabilityMonitorIntervalSteps) != 0) {
             return;
         }
 
@@ -976,8 +979,8 @@ public:
         rbs_.joint_vel = VecXf::Zero(robot_model::kTotalDof);
         rbs_.joint_tau = VecXf::Zero(robot_model::kTotalDof);
         
-        // The legacy multi-page debug dump is opt-in. Normal deployment uses
-        // the compact [Stability] line instead.
+        // The legacy multi-page debug dump is opt-in. Normal deployment keeps
+        // policy diagnostics silent and prints only operational telemetry.
         const char* debug_env = std::getenv("RL_DEBUG_OUTPUT");
         if (debug_env && (std::string(debug_env) == "1" || std::string(debug_env) == "true")) {
             enable_debug_output_ = true;
@@ -1083,10 +1086,10 @@ public:
                       << std::endl;
         }
 #endif
-        std::cout << "[RL monitor] compact stability report="
-                  << (stability_monitor_enabled_ ? "5 Hz" : "off")
-                  << ", legacy policy I/O and torque reports are opt-in"
-                  << std::endl;
+        if (stability_monitor_enabled_) {
+            std::cout << "[RL monitor] compact stability report=5 Hz"
+                      << std::endl;
+        }
 
         policy_ptr_->OnEnter();
 

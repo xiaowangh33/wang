@@ -15,7 +15,7 @@
  * - wheel joint position       <-> forced to zero in observation; wheels use velocity control
  * - real-wheel velocity frame  <-> sign-flipped at the hardware/URDF boundary in both
  *                                 observation and action; MuJoCo stays identity
- * - hardware wheel dq_des      <-> RS01 virtual motion target (+/-44 rad/s);
+ * - hardware wheel dq_des      <-> RS01 virtual motion target (+/-20 rad/s);
  *                                 MCU separately enforces the 17 Nm torque ceiling
  * - observation order must match the policy network:
  *   omega, projected_gravity, cmd_vel, joint_pos, joint_vel, last_action

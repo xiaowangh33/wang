@@ -577,7 +577,7 @@ void WheeledDogHardwareInterface::PublishMotorCommands(const MatXf& joint_cmd) {
             q_des = 0.0f;
             // RS01 communication type 1 consumes the training actuator's Kd
             // directly: tau = Kd * (dq_des - dq). dq_des is therefore a
-            // virtual torque-producing target (up to the protocol's 44
+            // virtual torque-producing target (up to the deployment's 20
             // rad/s). The MCU clamps wheel torque to 17 Nm; measured wheel
             // speed derating/tripping is intentionally disabled.
             tau_ff = 0.0f;

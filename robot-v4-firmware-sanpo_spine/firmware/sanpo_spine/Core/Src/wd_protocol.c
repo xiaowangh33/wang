@@ -8,7 +8,7 @@ WD_STATIC_ASSERT(packet_header_size, sizeof(WdPacketHeader) == 16u);
 WD_STATIC_ASSERT(joint_command_size, sizeof(WdJointCommand) == 20u);
 WD_STATIC_ASSERT(setpoint_payload_size, sizeof(WdSetpointPayload) == 352u);
 WD_STATIC_ASSERT(joint_feedback_size, sizeof(WdJointFeedback) == 24u);
-WD_STATIC_ASSERT(feedback_payload_size, sizeof(WdFeedbackPayload) == 1104u);
+WD_STATIC_ASSERT(feedback_payload_size, sizeof(WdFeedbackPayload) == 1172u);
 
 static uint32_t wd_read_u32_le(const uint8_t *p) {
   return ((uint32_t)p[0]) |

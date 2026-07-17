@@ -39,15 +39,15 @@ inline constexpr float kCommandAngVelZMax = 1.0f;
  * Leg dq_des remains a literal joint-speed command and is capped at 8 rad/s.
  * A wheel action is different: in RS01 motion-control mode it is a virtual
  * velocity target used by tau = Kd * (dq_des - dq), not permission for the
- * wheel to reach that speed.  Keep the training actuator's 50 rad/s range in
- * simulation and use the RS01 protocol's +/-44 rad/s range on hardware so the
- * wheel can produce its rated 17 Nm peak. Real-wheel measured-speed
- * derating/tripping is disabled; the RS01 protocol range and the drive's own
- * native protections define the remaining wheel-speed envelope. */
+ * wheel to reach that speed. Keep the training actuator's 50 rad/s range in
+ * simulation and cap the deployed target at +/-20 rad/s. The native RS01 CAN
+ * encoder must retain its +/-44 rad/s scaling, while its independent torque
+ * limit remains the rated 17 Nm. Real-wheel measured-speed derating/tripping
+ * is disabled; the drive's own native protections remain active. */
 inline constexpr float kHardwareBringupTorqueLimitNm = 36.0f;
 inline constexpr float kHardwareLegVelocityLimitRadps = 8.0f;
 inline constexpr float kTrainingWheelVelocityLimitRadps = 50.0f;
-inline constexpr float kHardwareWheelMotionVirtualVelocityLimitRadps = 44.0f;
+inline constexpr float kHardwareWheelMotionVirtualVelocityLimitRadps = 20.0f;
 // Current real-machine damping selected by the Kp=50/Kd=3 stability test.
 // RobotLab training used Kd=2; keep this deployment value in one place so
 // controlled sim-to-real gain offsets remain explicit.

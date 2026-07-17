@@ -11,6 +11,7 @@
 #ifndef IDLE_STATE_HPP_
 #define IDLE_STATE_HPP_
 
+#include <cstdlib>
 
 #include "state_base.h"
 #include "quardLeg_defines.h"
@@ -24,9 +25,15 @@ private:
     Vec3f rpy_, acc_, omg_;
     double enter_state_time_ = -10000.;
     double last_rl_entry_block_log_time_ = -10000.;
+    double last_sensor_warning_time_ = -10000.;
     RobotBasicState rbs_;
 
-    float last_print_time = 0;
+    double last_print_time_ = -10000.;
+    bool verbose_idle_output_ = []() {
+        const char* value = std::getenv("WHEELDOG_IDLE_DEBUG");
+        return value && (value[0] == '1' || value[0] == 't' || value[0] == 'T' ||
+                         value[0] == 'y' || value[0] == 'Y');
+    }();
     void GetProprioceptiveData(){
         joint_pos_ = ri_ptr_->GetJointPosition();
         joint_vel_ = ri_ptr_->GetJointVelocity();
@@ -77,32 +84,26 @@ private:
     bool ImuDataNormalCheck(){
         for(int i=0;i<3;++i){
             if(!std::isfinite(rpy_(i))){
-                std::cout << "rpy_ " << i << " : " << rpy_(i) << std::endl;
                 return false;
             } 
             if(!std::isfinite(omg_(i))){
-                std::cout << "omg_ " << i << " : " << omg_(i) << std::endl;
                 return false;
             }
             if(!std::isfinite(acc_(i))){
-                std::cout << "acc_ " << i << " : " << acc_(i) << std::endl;
                 return false;
             }
         }
 #ifndef BUILD_SIMULATION
         for(int i=0;i<3;++i){
             if(fabs(rpy_(i)) > M_PI){
-                std::cout << "rpy_ " << i << " : " << rpy_(i) << std::endl;
                 return false;
             }
             if(fabs(omg_(i)) > M_PI){
-                std::cout << "omg_ " << i << " : " << omg_(i) << std::endl;
                 return false;
             }
         }
         // RobotInterface 约定加速度单位为 m/s²；静止时模长应接近 gravity。
         if(acc_.norm() < 0.1*gravity || acc_.norm() > 3.0*gravity){
-            std::cout << "acc " << " : " << acc_.transpose() << std::endl;
             return false;
         }
 #endif
@@ -160,11 +161,12 @@ public:
         GetProprioceptiveData();
         joint_normal_flag_ = JointDataNormalCheck();
         imu_normal_flag_ = ImuDataNormalCheck();
-        if (((ri_ptr_->GetInterfaceTimeStamp() - last_print_time) > 1)) {
-                DisplayProprioceptiveInfo();
-                DisplayAxisValue();
-                last_print_time = ri_ptr_->GetInterfaceTimeStamp();
-            }
+        const double now = ri_ptr_->GetInterfaceTimeStamp();
+        if (verbose_idle_output_ && now - last_print_time_ >= 3.0) {
+            DisplayProprioceptiveInfo();
+            DisplayAxisValue();
+            last_print_time_ = now;
+        }
         MatXf cmd = MatXf::Zero(robot_model::kTotalDof, 5);
         for(int i=0;i<robot_model::kTotalDof;++i){
             cmd(i, 0) = robot_data_all->joint_cmd[i].kp; // kp
@@ -189,10 +191,11 @@ public:
 
 #ifndef BUILD_SIMULATION
         if(!joint_normal_flag_ || !imu_normal_flag_) {
-            static int invalid_sensor_log_count = 0;
-            if((invalid_sensor_log_count++ % 500) == 0){
+            const double now = ri_ptr_->GetInterfaceTimeStamp();
+            if(now - last_sensor_warning_time_ >= 3.0){
                 std::cout << "Sensor data not ready: joint=" << joint_normal_flag_
                           << " imu=" << imu_normal_flag_ << std::endl;
+                last_sensor_warning_time_ = now;
             }
             return StateName::kIdle;
         }
@@ -201,7 +204,7 @@ public:
         if(uc_ptr_->GetUserCommand().target_mode == int(RobotMotionState::RLControlMode)) {
 #ifndef BUILD_SIMULATION
             const double now = ri_ptr_->GetInterfaceTimeStamp();
-            if(now - last_rl_entry_block_log_time_ >= 1.0){
+            if(now - last_rl_entry_block_log_time_ >= 3.0){
                 std::cerr << "[Idle] RL entry blocked on hardware: press z first; "
                           << "StandUp must verify every joint before c" << std::endl;
                 last_rl_entry_block_log_time_ = now;

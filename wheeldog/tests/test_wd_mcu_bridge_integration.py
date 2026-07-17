@@ -134,6 +134,8 @@ class FakeMcu:
         payload += protocol.MOTOR_BYTES.pack(*([0] * protocol.MOTOR_COUNT))
         payload += protocol.MOTOR_BYTES.pack(*([0] * protocol.MOTOR_COUNT))
         payload += protocol.MOTOR_FLOATS.pack(*([0.0] * protocol.MOTOR_COUNT))
+        payload += protocol.FAST_VALID_MASK.pack(local_mask)
+        payload += protocol.MOTOR_FLOATS.pack(*([48.0] * protocol.MOTOR_COUNT))
         assert len(payload) == protocol.MAX_PAYLOAD
         return bytes(payload)
 

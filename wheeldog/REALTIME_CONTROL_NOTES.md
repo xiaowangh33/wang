@@ -135,12 +135,13 @@ software and is unwrapped with the confirmed single-turn encoder period of
 
 For a wheel, policy `dq_des` is a virtual target in
 `tau = 0.4 * (dq_des - dq)`, not permission for the wheel to reach that speed.
-Hardware accepts the RS01 protocol range `+/-44 rad/s` and retains the rated
-`17 Nm` peak limit so the real actuator matches RobotLab's flexible velocity
-actuator. The MCU converts the virtual target to a torque-limited motor target
-on every fresh 500 Hz feedback sample. The former wheel-only `600 Nm/s` torque
-ramp and `8 -> 10 rad/s` measured-speed derate/trip are disabled; wheel speed
-is bounded by the RS01 protocol range and the drive's native protections.
+Hardware caps this virtual target at `+/-20 rad/s` and retains the rated
+`17 Nm` peak limit. The native RS01 CAN velocity field stays encoded over its
+documented `+/-44 rad/s` range; that codec range is not a deployment command
+limit. The MCU converts the virtual target to a torque-limited motor target on
+every fresh 500 Hz feedback sample. The former wheel-only `600 Nm/s` torque
+ramp and `8 -> 10 rad/s` measured-speed derate/trip are disabled; the drive's
+native protections remain active.
 
 Leg desired speed remains capped at `8 rad/s`. Stand-up commands all wheels to
 `0 rad/s` with zero travel. The editable `kStandWheelTravelRad` and
@@ -160,7 +161,10 @@ during the preceding policy interval at the current measured state and compares
 that estimate with current motor torque feedback. The estimate includes the
 PC/MCU torque ceiling, but not a raw-position-wall intervention.
 
-The extended 1104-byte MCU feedback adds `final_joint_torque_cmd_nm[]`: the
+The extended 1172-byte MCU feedback includes `final_joint_torque_cmd_nm[]` and
+the low-rate per-motor VBUS telemetry: the torque array is the
 logical-joint command after torque ceiling, raw-position wall and leg-only
 measured-speed guard. `[WDP4 torque actual]` compares that value with motor torque feedback at
-5 Hz. A live safety stop latches the pre-zero command for the fatal report.
+an explicitly configured diagnostic rate. A live safety stop latches the
+pre-zero command for the fatal report. Normal deployment instead prints all 16
+motor temperatures and bus voltages every three seconds.

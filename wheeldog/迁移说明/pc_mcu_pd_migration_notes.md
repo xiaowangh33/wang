@@ -4,7 +4,7 @@
 > `50 Hz PC setpoint`、`20 Nm RS06`、`8 Nm RS01` 和 torque-slew 均是历史阶段，
 > 不是当前部署配置。当前契约为：ONNX/训练控制周期
 > `20 ms / 50 Hz`，PC→MCU 传输 `5 ms / 200 Hz`，RS06 腿 `36 Nm`，
-> RS01 轮 `17 Nm`，且不再施加力矩增长斜率。当前操作说明以
+> 腿目标速度 `8 rad/s`，RS01 轮 `17 Nm / 20 rad/s`，且不再施加力矩增长斜率。当前操作说明以
 > `REALTIME_CONTROL_NOTES.md` 和 `mcu_build_flash_debug_guide.md` 为准。
 
 ## 当前阶段
@@ -1017,9 +1017,10 @@ fault/CAN bad/RX overflow/TX error/deadline miss = 0/0/0/0/0
 - 短缺口期间的 observation 不写入共享内存，RL 继续持有上一帧；持续异常由 MCU
   100 ms 锁停与 PC 100 ms 整帧超时兜底，因此不会向策略发布混时刻/陈旧电机帧。
 - feedback 追加每电机最大 operation-status 帧间隔、锁停瞬间年龄，以及安全限幅/斜坡/
-  位置墙/速度保护后的 `final_joint_torque_cmd_nm[]`。payload/packet 现为
-  `1104/1120 B`；双 MCU 50 Hz feedback 为 `112.0 kB/s`。加上双向50 Hz
-  setpoint 后总 WDP4 payload 约 `148.8 kB/s`（约 `1.19 Mb/s`，未计 USB framing），
+  位置墙/速度保护后的 `final_joint_torque_cmd_nm[]`，并在末尾追加每电机 VBUS
+  与有效位。payload/packet 现为 `1172/1188 B`；双 MCU 50 Hz feedback 为
+  `118.8 kB/s`。加上双向50 Hz setpoint 后总 WDP4 约 `155.6 kB/s`
+  （约 `1.24 Mb/s`，未计 USB framing），
   对12 Mb/s USB FS仍有充分余量，且频率仍是50 Hz而非把500 Hz搬到PC。
 
 第五次整体运行在 CDC 栈修复和100 ms调试门限下稳定进入 RL，运行时间显著超过前一轮，

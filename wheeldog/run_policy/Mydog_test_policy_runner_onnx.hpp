@@ -50,9 +50,8 @@ private:
     Vec3f gravity_direction_ = Vec3f(0.0f, 0.0f, -1.0f);
     Vec3f last_logged_cmd_vel_ = Vec3f::Zero();
     bool cmd_log_initialized_ = false;
-    // The compact stability monitor in RLControlState is enabled by default.
-    // Keep the older full observation/wheel dumps opt-in so terminal I/O does
-    // not perturb or obscure a real-machine stability test.
+    // Runtime policy diagnostics are opt-in so terminal I/O does not perturb
+    // or obscure normal real-machine operation.
     bool verbose_policy_io_ = []() {
         const char* value = std::getenv("RL_VERBOSE_POLICY_IO");
         return value && (value[0] == '1' || value[0] == 't' || value[0] == 'T' ||
@@ -402,7 +401,7 @@ public:
                       << wheel_model_target_.transpose()
                       << "), hardware virtual target after frame sign and +/-"
                       << WheelVirtualTargetLimitRadps()
-                      << " rad/s protocol clamp=("
+                      << " rad/s deployment clamp=("
                       << hardware_wheel_target.transpose()
 #ifdef BUILD_SIMULATION
                       << ")"

@@ -105,8 +105,16 @@ DEFAULT_COMMAND_TIMEOUT_MS = 300
 DEFAULT_MIN_MOTOR_RATE_HZ = 350.0
 RUNTIME_LOW_RATE_CONSECUTIVE_WINDOWS = 5
 FIRMWARE_COMM_ERROR_CONSECUTIVE_FEEDBACKS = 5
-USB_TIMING_REPORT_PERIOD_S = 10.0
+# Detailed USB timing is diagnostic-only; leave it off during normal walking.
+USB_TIMING_REPORT_PERIOD_S = _nonnegative_env_float(
+    "WHEELDOG_USB_TIMING_REPORT_S", 0.0
+)
 USB_RECOVERY_EVENT_LOG_PERIOD_S = 1.0
+# Normal runtime telemetry: temperature comes from the drive status frame, while
+# firmware reads RobStride VBUS (0x701C) from each motor once per period.
+MOTOR_TELEMETRY_REPORT_PERIOD_S = _nonnegative_env_float(
+    "WHEELDOG_MOTOR_TELEMETRY_REPORT_S", 3.0
+)
 # Final-torque telemetry remains decoded for fault snapshots and tests, but the
 # old synchronous 5 Hz terminal dump is disabled by default. Set a positive
 # period explicitly when re-running a torque-chain diagnostic.
@@ -1072,6 +1080,45 @@ def final_torque_diagnostic(by_base: dict[int, McuFeedback]) -> str | None:
     )
 
 
+def motor_telemetry_report(by_base: dict[int, McuFeedback]) -> str:
+    """Return compact per-leg temperature and bus-voltage lines for 16 motors."""
+    temperatures: list[float | None] = [None] * MOTOR_COUNT
+    voltages: list[float | None] = [None] * MOTOR_COUNT
+    for base, feedback in sorted(by_base.items()):
+        first = 8 if base == 2 else 0
+        for index in range(first, first + 8):
+            temperature = feedback.joints[index].temperature_c
+            if (
+                feedback.online_mask & (1 << index)
+                and math.isfinite(temperature)
+            ):
+                temperatures[index] = temperature
+            voltage = feedback.supply_voltage_v[index]
+            if (
+                feedback.supply_voltage_telemetry_present
+                and feedback.supply_voltage_valid_mask & (1 << index)
+                and math.isfinite(voltage)
+            ):
+                voltages[index] = voltage
+
+    def format_groups(values: list[float | None]) -> str:
+        groups: list[str] = []
+        for leg, first in zip(("FL", "FR", "HL", "HR"), (0, 4, 8, 12)):
+            samples = ",".join(
+                "--" if value is None else f"{value:.1f}"
+                for value in values[first:first + 4]
+            )
+            groups.append(f"{leg}[{samples}]")
+        return " ".join(groups)
+
+    return (
+        "[Motor telemetry] temp_C (HipX,HipY,Knee,Wheel) "
+        + format_groups(temperatures)
+        + "\n[Motor telemetry] bus_V  (HipX,HipY,Knee,Wheel) "
+        + format_groups(voltages)
+    )
+
+
 def critical_firmware_error(feedback: McuFeedback) -> str | None:
     # Communication-event bits are intentionally absent here. A single bxCAN
     # mailbox miss, deadline deferral or RX queue overflow is diagnostic, not
@@ -1461,6 +1508,7 @@ def main() -> int:
         last_setup_progress_time = next_send - 2.0
         last_usb_timing_report_time = next_send
         last_torque_telemetry_report_time = next_send
+        last_motor_telemetry_report_time = next_send
         torque_telemetry_missing_reported = False
         last_setpoint_send_time: float | None = None
         setpoint_gap_window_max_ms = 0.0
@@ -1714,6 +1762,16 @@ def main() -> int:
                 last_torque_telemetry_report_time = now
 
             if (
+                ready_time is not None
+                and len(by_base) == 2
+                and MOTOR_TELEMETRY_REPORT_PERIOD_S > 0.0
+                and now - last_motor_telemetry_report_time
+                >= MOTOR_TELEMETRY_REPORT_PERIOD_S
+            ):
+                print(motor_telemetry_report(by_base), flush=True)
+                last_motor_telemetry_report_time = now
+
+            if (
                 identity_time is None
                 and now - bridge_start > args.setup_timeout_s
             ):
@@ -1825,7 +1883,11 @@ def main() -> int:
             elif feedback_received and ready_time is None:
                 # Identity/rate diagnostics continue, but never publish a mixed epoch.
                 pass
-            if now - last_usb_timing_report_time >= USB_TIMING_REPORT_PERIOD_S:
+            if (
+                USB_TIMING_REPORT_PERIOD_S > 0.0
+                and now - last_usb_timing_report_time
+                >= USB_TIMING_REPORT_PERIOD_S
+            ):
                 print(
                     "[WDP4 bridge] communication timing: "
                     + consume_usb_timing_report(states)

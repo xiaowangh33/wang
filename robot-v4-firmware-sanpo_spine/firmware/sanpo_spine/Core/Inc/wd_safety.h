@@ -63,8 +63,8 @@ float wd_safety_limit_torque_command_motion_aware(
     const WdSafetyRuntimeConfig *runtime,
     uint32_t *status_flags);
 /* Convert the training-aligned wheel virtual velocity target into an RS01
- * motion-mode target whose implied Kd torque respects only the 17 Nm peak
- * ceiling and the protocol's +/-44 rad/s target range. */
+ * motion-mode target whose implied Kd torque respects the 17 Nm peak ceiling
+ * and the deployment's +/-20 rad/s target range. */
 float wd_safety_compute_velocity_motion_target(
     uint32_t index,
     float virtual_velocity_desired_radps,

@@ -17,14 +17,14 @@ static void test_deployment_limits(void) {
 
   wd_safety_default_runtime_config(&runtime);
   assert(nearly_equal(runtime.torque_limit_nm, 36.0f));
-  assert(nearly_equal(runtime.velocity_limit_radps, 44.0f));
+  assert(nearly_equal(runtime.velocity_limit_radps, 20.0f));
   assert(nearly_equal(runtime.torque_slew_rate_nm_per_s,
                       WD_ACTIVE_TORQUE_SLEW_RATE_NM_PER_S));
 
   for (index = 0u; index < WD_MOTOR_COUNT; ++index) {
     const float expected_torque_limit = ((index % 4u) == 3u) ? 17.0f : 36.0f;
     const float expected_velocity_limit =
-        ((index % 4u) == 3u) ? 44.0f : 8.0f;
+        ((index % 4u) == 3u) ? 20.0f : 8.0f;
     assert(nearly_equal(
         wd_safety_effective_torque_limit(index, &runtime),
         expected_torque_limit));
@@ -116,55 +116,63 @@ static void test_final_command_clamps(void) {
   assert((flags & WD_STATUS_COMMAND_CLIPPED) == 0u);
 
   flags = 0u;
-  /* A wheel dq_des is the virtual target in Kd*(dq_des-dq), so it uses the
-   * full RS01 +/-44 rad/s motion-protocol range without a separate measured
-   * wheel-speed guard. */
+  /* A wheel dq_des is the virtual target in Kd*(dq_des-dq). Deployment caps
+   * it at +/-20 rad/s without adding a measured wheel-speed guard. */
   output = wd_safety_limit_velocity_command(3u, -20.0f, &runtime, &flags);
   assert(nearly_equal(output, -20.0f));
   assert((flags & WD_STATUS_COMMAND_CLIPPED) == 0u);
 
   flags = 0u;
   output = wd_safety_limit_velocity_command(3u, 50.0f, &runtime, &flags);
-  assert(nearly_equal(output, 44.0f));
+  assert(nearly_equal(output, 20.0f));
   assert((flags & WD_STATUS_COMMAND_CLIPPED) != 0u);
 
-  /* At zero measured speed Kd=0.4 and a full virtual target request expose
-   * the complete 17 Nm peak envelope: 0 + 17/0.4 = 42.5 rad/s. */
+  /* At zero measured speed the +/-20 rad/s deployment target and Kd=0.4
+   * request 8 Nm. The drive limit itself remains the rated 17 Nm. */
   {
     float torque = 0.0f;
     flags = 0u;
     output = wd_safety_compute_velocity_motion_target(
-        3u, 44.0f, 0.0f, 0.4f, 0.0f, 0.0f,
+        3u, 20.0f, 0.0f, 0.4f, 0.0f, 0.0f,
         &runtime, &flags, &torque);
-    assert(nearly_equal(output, 42.5f));
+    assert(nearly_equal(output, 20.0f));
+    assert(nearly_equal(torque, 8.0f));
+
+    /* A sufficiently large opposite-direction error can still request the
+     * full 17 Nm rated wheel torque without exceeding the target ceiling. */
+    flags = 0u;
+    output = wd_safety_compute_velocity_motion_target(
+        3u, 20.0f, -22.5f, 0.4f, 0.0f, 0.002f,
+        &runtime, &flags, &torque);
+    assert(nearly_equal(output, 20.0f));
     assert(nearly_equal(torque, 17.0f));
 
-    /* Wheel measured-speed derating is disabled. At 9 rad/s the full virtual
-     * target remains available and produces 14 Nm. */
+    /* Wheel measured-speed derating is disabled. At 9 rad/s the full target
+     * remains available and produces 4.4 Nm. */
     flags = 0u;
     output = wd_safety_compute_velocity_motion_target(
-        3u, 44.0f, 9.0f, 0.4f, 17.0f, 0.002f,
+        3u, 20.0f, 9.0f, 0.4f, 17.0f, 0.002f,
         &runtime, &flags, &torque);
-    assert(nearly_equal(output, 44.0f));
-    assert(nearly_equal(torque, 14.0f));
+    assert(nearly_equal(output, 20.0f));
+    assert(nearly_equal(torque, 4.4f));
     assert((flags & WD_STATUS_VELOCITY_GUARD) == 0u);
 
     flags = 0u;
     output = wd_safety_compute_velocity_motion_target(
-        3u, -44.0f, 9.0f, 0.4f, 7.0f, 0.002f,
+        3u, -20.0f, 9.0f, 0.4f, 7.0f, 0.002f,
         &runtime, &flags, &torque);
-    assert(nearly_equal(output, -33.5f));
-    assert(nearly_equal(torque, -17.0f));
+    assert(nearly_equal(output, -20.0f));
+    assert(nearly_equal(torque, -11.6f));
     assert((flags & WD_STATUS_VELOCITY_GUARD) == 0u);
 
-    /* Even if external motion drives a wheel beyond the protocol target
+    /* Even if external motion drives a wheel beyond the deployment target
      * range, the reported final command remains bounded by the native 17 Nm
      * drive limit while no measured-speed trip is generated. */
     flags = 0u;
     output = wd_safety_compute_velocity_motion_target(
-        3u, 44.0f, 100.0f, 0.4f, 0.0f, 0.002f,
+        3u, 20.0f, 100.0f, 0.4f, 0.0f, 0.002f,
         &runtime, &flags, &torque);
-    assert(nearly_equal(output, 44.0f));
+    assert(nearly_equal(output, 20.0f));
     assert(nearly_equal(torque, -17.0f));
     assert((flags & WD_STATUS_VELOCITY_GUARD) == 0u);
   }
@@ -430,7 +438,7 @@ static void test_setpoint_is_forced_to_absolute_limits(void) {
 
   setpoint.joint[3].dq_des = 50.0f;
   flags = wd_safety_sanitize_setpoint(&setpoint, &runtime);
-  assert(nearly_equal(setpoint.joint[3].dq_des, 44.0f));
+  assert(nearly_equal(setpoint.joint[3].dq_des, 20.0f));
   assert((flags & WD_STATUS_SETPOINT_CLIPPED) != 0u);
 
   setpoint.joint[3].kp = 1.0f;

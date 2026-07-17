@@ -34,7 +34,10 @@
 #define WD_ROBSTRIDE_PARAM_I_LIMIT (0x7018u)
 #define WD_ROBSTRIDE_PARAM_MECH_POS (0x7019u)
 #define WD_ROBSTRIDE_PARAM_MECH_VEL (0x701Bu)
+#define WD_ROBSTRIDE_PARAM_VBUS (0x701Cu)
 #define WD_READONLY_POLL_PERIOD_MS (5u)
+#define WD_MOTOR_TELEMETRY_POLL_PERIOD_MS (3000u)
+#define WD_MOTOR_TELEMETRY_POLL_STEP_MS (5u)
 #define WD_DEVICE_DISCOVERY_RETRY_MS (250u)
 #define WD_MOTORS_PER_CAN_BUS (4u)
 #define WD_LOCAL_CAN_BUS_COUNT (2u)
@@ -148,6 +151,11 @@ typedef struct {
   uint8_t readonly_discovery_bus;
   uint32_t last_live_precheck_poll_ms;
   uint32_t live_precheck_poll_step;
+  uint32_t last_motor_telemetry_poll_ms;
+  uint32_t last_motor_telemetry_attempt_ms;
+  uint32_t motor_telemetry_poll_cursor;
+  uint32_t supply_voltage_valid_mask;
+  float supply_voltage_v[WD_MOTOR_COUNT];
   uint32_t last_live_discovery_ms;
   uint32_t live_discovery_step;
   uint32_t live_discovery_complete_ms;
@@ -211,7 +219,7 @@ typedef struct {
 static WdControlState g_wd;
 static uint8_t g_tx_buffer[WD_PROTOCOL_MAX_PACKET];
 /*
- * The CDC TX task has a 1024-byte stack. WdFeedbackPayload is itself 1104
+ * The CDC TX task has a 1024-byte stack. WdFeedbackPayload is itself 1172
  * bytes, so placing it on that stack would overflow before accounting for
  * call frames. Keep the single-producer payload in static RAM instead.
  */
@@ -1349,6 +1357,64 @@ static void wd_control_service_live_precheck_poll(uint32_t now_ms) {
   }
 }
 
+/*
+ * VBUS is not part of the 500 Hz operation-status frame. Read it through the
+ * drive's asynchronous parameter channel without putting it on the realtime
+ * command path: one request is attempted every 5 ms until all eight local
+ * motors have been sampled, then the next sweep waits three seconds. Busy CAN
+ * mailboxes simply defer the request; motor commands retain priority.
+ */
+static void wd_control_service_motor_telemetry(uint32_t now_ms) {
+  const uint32_t local_mask =
+      ((1u << WD_LIVE_LOCAL_MOTOR_COUNT) - 1u) <<
+      WD_LOCAL_LOGICAL_FIRST_INDEX;
+  uint32_t index;
+  uint8_t local_bus;
+  uint8_t motor_id;
+
+  if ((g_wd.status_flags & (WD_STATUS_LIVE_CONTROL_ACTIVE |
+                            WD_STATUS_LIVE_ENABLE_READY)) !=
+          (WD_STATUS_LIVE_CONTROL_ACTIVE | WD_STATUS_LIVE_ENABLE_READY) ||
+      (g_wd.status_flags & (WD_STATUS_COMMAND_TIMEOUT | WD_STATUS_ESTOP |
+                            WD_STATUS_LIVE_SAFETY_STOP)) != 0u) {
+    g_wd.motor_telemetry_poll_cursor = 0u;
+    g_wd.last_motor_telemetry_poll_ms = 0u;
+    return;
+  }
+
+  if (g_wd.motor_telemetry_poll_cursor == 0u &&
+      g_wd.last_motor_telemetry_poll_ms != 0u &&
+      (now_ms - g_wd.last_motor_telemetry_poll_ms) <
+          WD_MOTOR_TELEMETRY_POLL_PERIOD_MS) {
+    return;
+  }
+  if ((now_ms - g_wd.last_motor_telemetry_attempt_ms) <
+      WD_MOTOR_TELEMETRY_POLL_STEP_MS) {
+    return;
+  }
+  g_wd.last_motor_telemetry_attempt_ms = now_ms;
+
+  index = WD_LOCAL_LOGICAL_FIRST_INDEX +
+          g_wd.motor_telemetry_poll_cursor;
+  if (wd_control_local_bus_motor_from_index(index, &local_bus, &motor_id) == 0u ||
+      wd_control_send_read_param(local_bus,
+                                 motor_id,
+                                 WD_ROBSTRIDE_PARAM_VBUS) == 0) {
+    return;
+  }
+
+  if (g_wd.motor_telemetry_poll_cursor == 0u) {
+    /* Do not present an old voltage indefinitely when a motor misses the new
+     * three-second sweep. Each successful reply revalidates its own bit. */
+    g_wd.supply_voltage_valid_mask &= ~local_mask;
+  }
+  ++g_wd.motor_telemetry_poll_cursor;
+  if (g_wd.motor_telemetry_poll_cursor >= WD_LIVE_LOCAL_MOTOR_COUNT) {
+    g_wd.motor_telemetry_poll_cursor = 0u;
+    g_wd.last_motor_telemetry_poll_ms = now_ms;
+  }
+}
+
 static uint32_t wd_control_live_all_feedback_healthy(void) {
   uint32_t slot;
 
@@ -1980,13 +2046,20 @@ static void wd_control_apply_read_param_feedback(const WdCanRxFrame *frame,
 
   param_index = wd_le_u16(&frame->data[0]);
   if (param_index != WD_ROBSTRIDE_PARAM_MECH_POS &&
-      param_index != WD_ROBSTRIDE_PARAM_MECH_VEL) {
+      param_index != WD_ROBSTRIDE_PARAM_MECH_VEL &&
+      param_index != WD_ROBSTRIDE_PARAM_VBUS) {
     return;
   }
 
   value = wd_le_f32(&frame->data[4]);
   if (wd_safety_is_finite(value) == 0) {
     ++g_wd.can_rx_bad_frames;
+    return;
+  }
+
+  if (param_index == WD_ROBSTRIDE_PARAM_VBUS) {
+    g_wd.supply_voltage_v[index] = value;
+    g_wd.supply_voltage_valid_mask |= (1u << index);
     return;
   }
 
@@ -2553,6 +2626,9 @@ void wd_control_service_1khz(void) {
   wd_control_compute_motor_commands();
   g_wd.status_flags |= g_wd.command_status_flags;
   wd_control_service_live_can(now_ms);
+#if WD_ALLOW_LIVE_CAN_CONTROL
+  wd_control_service_motor_telemetry(now_ms);
+#endif
 
   if (g_wd.dry_run != 0u) {
     g_wd.status_flags |= WD_STATUS_DRY_RUN;
@@ -2690,6 +2766,7 @@ static void wd_control_fill_feedback_payload(WdFeedbackPayload *payload) {
         (g_wd.live_stop_reason_flags != 0u) ?
             g_wd.live_stop_joint_torque_cmd_nm[i] :
             g_wd.joint_torque_cmd_nm[i];
+    payload->supply_voltage_v[i] = g_wd.supply_voltage_v[i];
     if (wd_fast_feedback_ready(&g_wd.fast_feedback[i], now_ms) != 0) {
       payload->fast_feedback_valid_mask |= (1u << i);
     }
@@ -2704,6 +2781,7 @@ static void wd_control_fill_feedback_payload(WdFeedbackPayload *payload) {
       payload->fast_velocity_excited_mask |= (1u << i);
     }
   }
+  payload->supply_voltage_valid_mask = g_wd.supply_voltage_valid_mask;
 }
 
 int wd_control_usb_tx_poll(void) {

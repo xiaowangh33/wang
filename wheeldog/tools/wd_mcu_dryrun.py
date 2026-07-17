@@ -22,7 +22,7 @@ except ImportError as exc:  # pragma: no cover - user environment helper
 MAGIC = 0x34504457
 VERSION = 1
 MOTOR_COUNT = 16
-MAX_PAYLOAD = 1104
+MAX_PAYLOAD = 1172
 
 PACKET_HELLO = 1
 PACKET_SETPOINT = 2
@@ -37,7 +37,7 @@ LIMIT_CALIBRATED_ABSOLUTE = 1
 TORQUE_JOINT_PHASES = {0, 1, 2}
 VELOCITY_JOINT_PHASES = {3}
 BENCH_TORQUE_LIMIT_NM = 36.0
-BENCH_VELOCITY_LIMIT_RAD_S = 8.0
+BENCH_VELOCITY_LIMIT_RAD_S = 20.0
 DEFAULT_SETPOINT_HZ = 200.0
 MIN_SETPOINT_HZ = 10.0
 MAX_SETPOINT_HZ = 200.0
@@ -250,6 +250,9 @@ class Feedback:
     live_stop_fast_age_ms: tuple[int, ...] = (0,) * MOTOR_COUNT
     final_joint_torque_cmd_nm: tuple[float, ...] = (0.0,) * MOTOR_COUNT
     final_torque_telemetry_present: bool = False
+    supply_voltage_valid_mask: int = 0
+    supply_voltage_v: tuple[float, ...] = (0.0,) * MOTOR_COUNT
+    supply_voltage_telemetry_present: bool = False
 
 
 def status_names(flags: int) -> str:
@@ -355,6 +358,15 @@ def parse_feedback(payload: bytes) -> Feedback | None:
         final_joint_torque_cmd_nm = MOTOR_FLOATS.unpack_from(payload, offset)
         offset += MOTOR_FLOATS.size
         final_torque_telemetry_present = True
+    supply_voltage_valid_mask = 0
+    supply_voltage_v = (0.0,) * MOTOR_COUNT
+    supply_voltage_telemetry_present = False
+    if len(payload) >= offset + 4 + MOTOR_FLOATS.size:
+        (supply_voltage_valid_mask,) = struct.unpack_from("<I", payload, offset)
+        offset += 4
+        supply_voltage_v = MOTOR_FLOATS.unpack_from(payload, offset)
+        offset += MOTOR_FLOATS.size
+        supply_voltage_telemetry_present = True
     return Feedback(
         *values,
         joints,
@@ -372,6 +384,9 @@ def parse_feedback(payload: bytes) -> Feedback | None:
         *fast_timing,
         final_joint_torque_cmd_nm,
         final_torque_telemetry_present,
+        supply_voltage_valid_mask,
+        supply_voltage_v,
+        supply_voltage_telemetry_present,
     )
 
 
@@ -643,12 +658,19 @@ def main() -> int:
                             first = 8 if fb.status_flags & STATUS_MCU_CAN_BASE_2 else 0
                             for index in range(first, first + 8):
                                 joint = fb.joints[index]
+                                voltage = (
+                                    f"{fb.supply_voltage_v[index]:.1f}"
+                                    if fb.supply_voltage_telemetry_present
+                                    and fb.supply_voltage_valid_mask & (1 << index)
+                                    else "--"
+                                )
                                 parts.append(
                                     f"{index}:on={joint.online} q={joint.q:.3f} "
                                     f"dq={joint.dq:.3f} "
                                     f"tau={joint.tau:.3f} "
                                     f"tau_cmd={fb.final_joint_torque_cmd_nm[index]:.3f} "
                                     f"T={joint.temperature_c:.1f} "
+                                    f"V={voltage} "
                                     f"op={fb.fast_feedback_rate_hz[index]:.1f}Hz "
                                     f"gap={fb.operation_status_max_gap_ms[index]}ms "
                                     f"pe={fb.fast_position_error_rad[index]:.4f} "

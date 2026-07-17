@@ -10,17 +10,16 @@
 #define WD_DEFAULT_SOFT_ZONE_RAD (5.0f * WD_PI / 180.0f)
 #define WD_DEPLOYMENT_LEG_TORQUE_LIMIT_NM (36.0f)
 /* Literal leg velocity commands retain their 8 rad/s safety ceiling. Wheel
- * dq_des is the virtual target in tau=Kd*(dq_des-dq), and both its configured
- * velocity envelope and command envelope expose the complete RS01 +/-44
- * rad/s protocol range. */
-#define WD_BRINGUP_WHEEL_VELOCITY_LIMIT_RADPS (44.0f)
+ * dq_des is the virtual target in tau=Kd*(dq_des-dq); deployment caps that
+ * target at +/-20 rad/s while the native RS01 CAN codec remains +/-44 rad/s. */
+#define WD_BRINGUP_WHEEL_VELOCITY_LIMIT_RADPS (20.0f)
 #define WD_RUNTIME_VELOCITY_LIMIT_RADPS WD_BRINGUP_WHEEL_VELOCITY_LIMIT_RADPS
 #define WD_BRINGUP_LEG_VELOCITY_GUARD_RADPS (8.0f)
-#define WD_WHEEL_MOTION_VIRTUAL_VELOCITY_LIMIT_RADPS (44.0f)
+#define WD_WHEEL_MOTION_VIRTUAL_VELOCITY_LIMIT_RADPS (20.0f)
 /* The measured-speed derate/trip remains a leg-joint protection only. Wheel
  * motion no longer enters this 8..10 rad/s guard or its 16 rad/s immediate
- * trip; RS01 wheel speed is bounded only by the native +/-44 rad/s protocol
- * target and the drive's own hardware protections. */
+ * trip. The requested target is capped at +/-20 rad/s and the drive's own
+ * hardware protections remain active. */
 #define WD_LEG_DERATE_START_RADPS (8.0f)
 #define WD_LEG_OVERSPEED_TRIP_RADPS (10.0f)
 #define WD_LEG_OVERSPEED_IMMEDIATE_TRIP_RADPS (16.0f)
@@ -153,9 +152,8 @@ static float joint_velocity_limit(const WdJointSafetyConfig *joint,
   return limit;
 }
 
-/* Wheel dq_des is a virtual motion-control target. It spans the native RS01
- * protocol range; continuous wheels are excluded from the leg-only measured
- * velocity guard. */
+/* Wheel dq_des is a virtual motion-control target capped at the deployment
+ * limit; continuous wheels are excluded from the leg-only measured guard. */
 static float joint_velocity_command_limit(
     const WdJointSafetyConfig *joint,
     const WdSafetyRuntimeConfig *runtime) {
